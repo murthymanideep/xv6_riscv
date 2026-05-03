@@ -44,3 +44,4 @@ entry("pause");
 entry("uptime");
 entry("hello");
 entry("getpid2");
+entry("getppid");

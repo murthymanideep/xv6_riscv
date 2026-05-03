@@ -119,3 +119,9 @@ sys_getpid2(void)
 {
   return kgetpid2();
 }
+
+uint64
+sys_getppid(void)
+{
+  return kgetppid();
+}

@@ -698,3 +698,17 @@ int khello(void){
 int kgetpid2(void){
   return myproc()->pid;
 }
+
+int kgetppid(void){
+  int ppid=-1;
+  struct proc* process=myproc();
+
+  acquire(&wait_lock);
+  if(process->parent){
+    acquire(&process->parent->lock);
+    ppid=process->parent->pid;
+    release(&process->parent->lock);
+  }
+  release(&wait_lock);
+  return ppid;
+}
