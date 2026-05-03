@@ -1,3 +1,57 @@
+# This repository extends the xv6 (RISC-V) operating system with custom system calls and kernel-level statistics.
+
+---
+
+## Implemented System Calls
+
+### hello()
+Prints a fixed message from inside the kernel.  
+Takes no arguments and always returns 0.
+
+### getpid2()
+Returns the PID of the calling process.  
+Implemented using `myproc()` without relying on the existing `getpid()`.
+
+### getppid()
+Returns the PID of the parent process.  
+Returns `-1` if the process has no parent.  
+Accesses parent information using `wait_lock` and the parent’s process lock.
+
+### getnumchild()
+Returns the number of live (non-zombie) child processes.  
+Scans the global process table and checks parent relationships.  
+Uses `wait_lock` and per-process locks for safe access.
+
+### getsyscount()
+Returns the total number of system calls made by the process.  
+Reads a counter stored in the process structure.
+
+### getchildsyscount(pid)
+Returns the system call count of a given child process.  
+Returns `-1` if the PID is not a child.  
+Uses `wait_lock` and child process locks for consistency.
+
+---
+
+## Design Decisions and Assumptions
+
+- Each process maintains its own system call counter.
+- The counter is incremented on every system call.
+- Parent–child relationships are accessed only while holding `wait_lock`.
+- Process state and counters are accessed using per-process locks.
+- Child processes are identified by scanning the global process table.
+- Zombie processes are not counted as active children.
+- System call counters are not preserved after process termination.
+
+---
+
+## Note
+This repository is based on the original xv6 (RISC-V) codebase from MIT PDOS.
+
+---
+
+# Original xv6 README (Unmodified)
+
 xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
 Version 6 (v6).  xv6 loosely follows the structure and style of v6,
 but is implemented for a modern RISC-V multiprocessor using ANSI C.
