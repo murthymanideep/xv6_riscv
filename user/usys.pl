@@ -46,3 +46,4 @@ entry("hello");
 entry("getpid2");
 entry("getppid");
 entry("getnumchild");
+entry("getsyscount");

@@ -730,3 +730,13 @@ int kgetnumchild(void){
   release(&wait_lock);
   return numchild;
 }
+
+int 
+kgetsyscount(void)
+{
+  struct proc* process=myproc();
+  acquire(&process->lock);
+  int numsyscalls=process->systemcall_count;
+  release(&process->lock);
+  return numsyscalls;
+}

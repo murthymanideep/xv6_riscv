@@ -131,3 +131,9 @@ sys_getnumchild(void)
 {
   return kgetnumchild();
 }
+
+uint64
+sys_getsyscount(void)
+{
+  return kgetsyscount();
+}

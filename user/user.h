@@ -28,6 +28,7 @@ int hello(void);
 int getpid2(void);
 int getppid(void);
 int getnumchild(void);
+int getsyscount(void);
 
 // ulib.c
 int stat(const char*, struct stat*);
