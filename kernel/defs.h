@@ -106,6 +106,7 @@ int             kgetpid2(void);
 int             kgetppid(void);
 int             kgetnumchild(void);
 int             kgetsyscount(void);
+int             kgetchildsyscount(int);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

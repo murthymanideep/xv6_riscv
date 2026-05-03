@@ -740,3 +740,22 @@ kgetsyscount(void)
   release(&process->lock);
   return numsyscalls;
 }
+
+int kgetchildsyscount(int pid){
+  struct proc* process=myproc();
+  int count=-1;
+  acquire(&wait_lock);
+  for(int i=0;i<NPROC;i++){
+    struct proc *curprocess=proc+i;
+    acquire(&curprocess->lock);
+    if(curprocess->parent==process && curprocess->pid==pid)
+    {
+      count=curprocess->systemcall_count;
+      release(&curprocess->lock);
+      break;
+    }
+    release(&curprocess->lock);
+  }
+  release(&wait_lock);
+  return count;
+}

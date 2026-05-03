@@ -137,3 +137,11 @@ sys_getsyscount(void)
 {
   return kgetsyscount();
 }
+
+uint64 
+sys_getchildsyscount(void)
+{
+  int pid;
+  argint(0,&pid);
+  return kgetchildsyscount(pid);
+}
