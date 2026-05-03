@@ -104,6 +104,7 @@ void            procdump(void);
 int             khello(void);
 int             kgetpid2(void);
 int             kgetppid(void);
+int             kgetnumchild(void);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

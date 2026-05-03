@@ -712,3 +712,19 @@ int kgetppid(void){
   release(&wait_lock);
   return ppid;
 }
+
+int kgetnumchild(void){
+  int numchild=0;
+  struct proc* process=myproc();
+  acquire(&wait_lock);
+  for(int i=0;i<NPROC;i++){
+    struct proc* curprocess=proc+i;
+    acquire(&curprocess->lock);
+    if(curprocess->state!=ZOMBIE && curprocess->parent==process){
+      numchild++;
+    }
+    release(&curprocess->lock);
+  }
+  release(&wait_lock);
+  return numchild;
+}

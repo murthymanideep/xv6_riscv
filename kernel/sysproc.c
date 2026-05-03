@@ -125,3 +125,9 @@ sys_getppid(void)
 {
   return kgetppid();
 }
+
+uint64
+sys_getnumchild(void)
+{
+  return kgetnumchild();
+}

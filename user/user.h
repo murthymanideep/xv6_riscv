@@ -27,6 +27,7 @@ int uptime(void);
 int hello(void);
 int getpid2(void);
 int getppid(void);
+int getnumchild(void);
 
 // ulib.c
 int stat(const char*, struct stat*);
