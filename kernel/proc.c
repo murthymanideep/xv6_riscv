@@ -694,3 +694,7 @@ int khello(void){
   printf("%s",message);
   return 0;
 }
+
+int kgetpid2(void){
+  return myproc()->pid;
+}

@@ -113,3 +113,9 @@ sys_hello(void)
 {
   return khello();
 }
+
+uint64
+sys_getpid2(void)
+{
+  return kgetpid2();
+}
