@@ -688,3 +688,9 @@ procdump(void)
     printf("\n");
   }
 }
+
+int khello(void){
+  char *message="Hello from the kernel!\n";
+  printf("%s",message);
+  return 0;
+}
