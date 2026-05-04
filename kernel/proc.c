@@ -878,3 +878,24 @@ int kgetlevel(void){
   release(&p->lock);
   return level;
 }
+
+int
+kgetmlfqinfo(int pid, struct mlfqinfo *info)
+{
+  struct proc *p;
+  for(p=proc;p<&proc[NPROC];p++){
+    acquire(&p->lock);
+    if(p->pid==pid && p->state!=UNUSED){
+      info->level=p->level;
+      for(int i=0;i<4;i++){
+        info->ticks[i]=p->ticks_total[i];
+      }
+      info->times_scheduled=p->times_scheduled;
+      info->total_syscalls=p->systemcall_count;
+      release(&p->lock);
+      return 0;
+    }
+    release(&p->lock);
+  }
+  return -1;
+}

@@ -108,6 +108,7 @@ extern uint64 sys_getnumchild(void);
 extern uint64 sys_getsyscount(void);
 extern uint64 sys_getchildsyscount(void);
 extern uint64 sys_getlevel(void);
+extern uint64 sys_getmlfqinfo(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -140,6 +141,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_getsyscount] sys_getsyscount,
 [SYS_getchildsyscount] sys_getchildsyscount,
 [SYS_getlevel] sys_getlevel,
+[SYS_getmlfqinfo] sys_getmlfqinfo,
 };
 
 void
