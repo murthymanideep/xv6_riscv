@@ -534,8 +534,12 @@ void scheduler(void){
 
             swtch(&c->context,&p->context);
 
-            // Only reset per-slice accounting after execution
-            if(p->state==RUNNABLE){
+            // Demotion based on number of system calls
+            if(p->state==RUNNABLE && p->ticks_used>=time_quantum[level]){
+              int delta=p->systemcall_count-p->slice_start_syscalls;
+              if(delta<p->ticks_used && p->level<3){
+                p->level++;
+              }
               p->ticks_used=0;
               p->slice_start_syscalls=p->systemcall_count;
             }
