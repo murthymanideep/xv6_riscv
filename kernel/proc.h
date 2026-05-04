@@ -112,3 +112,10 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 };
+
+struct mlfqinfo{
+  int level;
+  int ticks[4];
+  int times_scheduled;
+  int total_syscalls;
+};
