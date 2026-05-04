@@ -15,6 +15,10 @@ struct proc *initproc;
 int nextpid = 1;
 struct spinlock pid_lock;
 
+int time_quantum[4]={2,4,8,16};
+int roundrobin_index[4]={0,0,0,0};
+struct spinlock roundrobin_lock[4]; 
+
 extern void forkret(void);
 static void freeproc(struct proc *p);
 
@@ -51,6 +55,9 @@ procinit(void)
   
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
+  for(int i=0;i<4;i++){
+    initlock(&roundrobin_lock[i],"roundrobin_lock");
+  }
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
       p->state = UNUSED;
@@ -437,7 +444,8 @@ kwait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
-void
+// Round Robin scheduler previous scheduler used by xv6
+/*void
 scheduler(void)
 {
   struct proc *p;
@@ -473,6 +481,77 @@ scheduler(void)
     }
     if(found == 0) {
       // nothing to run; stop running on this core until an interrupt.
+      asm volatile("wfi");
+    }
+  }
+}*/
+
+// Mlfq scheduler
+void scheduler(void){
+  struct proc *p;
+  struct cpu *c=mycpu();
+  c->proc=0;
+
+  for(;;){
+    intr_on();
+    intr_off();
+
+    int found=0;
+    for(int level=0;level<4;level++){
+      int start0,end0,start1,end1;
+      acquire(&roundrobin_lock[level]);
+      start0=roundrobin_index[level];
+      end0=NPROC;
+      start1=0;
+      end1=roundrobin_index[level];
+      release(&roundrobin_lock[level]);
+
+      // Two-pass scan to implement circular traversal
+      for(int pass=0;pass<2;pass++){
+        int start=(pass==0)? start0:start1;
+        int end=(pass==0)?end0:end1;
+
+        for(int i=start;i<end;i++){
+          p=&proc[i];
+          acquire(&p->lock);
+
+          if(p->state==RUNNABLE && p->level==level){
+            found=1;
+            // Context switch to selected process
+            p->state=RUNNING;
+            c->proc=p;
+            p->times_scheduled++;
+
+            // Initialize slice accounting at start of execution to get
+            // Number of system calls made during current time slice
+            if(p->ticks_used==0){
+              p->slice_start_syscalls=p->systemcall_count;
+            }
+
+            acquire(&roundrobin_lock[level]);
+            roundrobin_index[level]=(i+1)%NPROC;
+            release(&roundrobin_lock[level]);
+
+            swtch(&c->context,&p->context);
+
+            // Only reset per-slice accounting after execution
+            if(p->state==RUNNABLE){
+              p->ticks_used=0;
+              p->slice_start_syscalls=p->systemcall_count;
+            }
+
+            // Process yielded
+            c->proc=0;
+            release(&p->lock);
+            break;
+          }
+          release(&p->lock);
+        }
+        if(found) break;
+      }
+      if(found) break;
+    }
+    if(!found){
       asm volatile("wfi");
     }
   }
