@@ -870,3 +870,11 @@ int kgetchildsyscount(int pid){
   release(&wait_lock);
   return count;
 }
+
+int kgetlevel(void){
+  struct proc *p=myproc();
+  acquire(&p->lock);
+  int level=p->level;
+  release(&p->lock);
+  return level;
+}
