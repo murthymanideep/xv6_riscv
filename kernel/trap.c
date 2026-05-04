@@ -11,6 +11,10 @@ uint ticks;
 
 extern char trampoline[], uservec[];
 
+extern struct proc proc[];
+extern int time_quantum[];
+uint global_ticks=0;
+
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
 
@@ -81,8 +85,44 @@ usertrap(void)
     kexit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+  if(which_dev==2){
+    struct proc *p=myproc();
+    int should_yield=0;
+    if(p!=0){
+      acquire(&p->lock);
+
+      // Timer interrupt: update runtime statistics for current process
+      p->ticks_used++;
+      p->ticks_total[p->level]++;
+      int time_slice=time_quantum[p->level];
+
+      // Check if process has exhausted its time slice
+      if(p->ticks_used>=time_slice) {
+        should_yield=1;
+      }
+      int curr_level=p->level;
+
+      release(&p->lock);
+
+      // Check higher priority runnable process
+      // If found yield current process early
+      if(should_yield==0){
+        struct proc *temp;
+        for(temp=proc;temp<&proc[NPROC];temp++){
+          acquire(&temp->lock);
+          if(temp->state==RUNNABLE && temp->level<curr_level){
+            should_yield=1;
+            release(&temp->lock);
+            break;
+          }
+          release(&temp->lock);
+        }
+      }
+    }
+
+    if(should_yield)
+      yield();
+  }
 
   prepare_return();
 
@@ -152,8 +192,44 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && myproc() != 0)
-    yield();
+  if(which_dev==2){
+    struct proc *p=myproc();
+    int should_yield=0;
+    if(p!=0){
+      acquire(&p->lock);
+
+      // Timer interrupt: update runtime statistics for current process
+      p->ticks_used++;
+      p->ticks_total[p->level]++;
+      int time_slice=time_quantum[p->level];
+
+      // Check if process has exhausted its time slice
+      if(p->ticks_used>=time_slice) {
+        should_yield=1;
+      }
+      int curr_level=p->level;
+
+      release(&p->lock);
+
+      // Check higher priority runnable process
+      // If found yield current process early
+      if(should_yield==0){
+        struct proc *temp;
+        for(temp=proc;temp<&proc[NPROC];temp++){
+          acquire(&temp->lock);
+          if(temp->state==RUNNABLE && temp->level<curr_level){
+            should_yield=1;
+            release(&temp->lock);
+            break;
+          }
+          release(&temp->lock);
+        }
+      }
+    }
+    
+    if(p!=0 && should_yield)
+      yield();
+  }
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
