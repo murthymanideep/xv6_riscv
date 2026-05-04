@@ -93,6 +93,12 @@ struct proc {
   int pid;                     // Process ID
   int systemcall_count;        // Total number of system calls invoked
 
+  int level;                   // Level
+  int ticks_used;              // Ticks used in curent slice
+  int ticks_total[4];          // Total ticks per level
+  int times_scheduled;         // Times scheduled
+  int slice_start_syscalls;    // Syscall count at slice start
+
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
 

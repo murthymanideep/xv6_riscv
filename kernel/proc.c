@@ -125,6 +125,13 @@ found:
   p->pid = allocpid();
   p->state = USED;
   p->systemcall_count=0;
+  p->level=0;     
+  p->ticks_used=0;             
+  p->times_scheduled=0;       
+  p->slice_start_syscalls=0; 
+  for(int i=0;i<4;i++){
+      p->ticks_total[i]=0;
+  }
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -171,6 +178,13 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = UNUSED;
   p->systemcall_count=0;
+  p->level=0;     
+  p->ticks_used=0;             
+  p->times_scheduled=0;       
+  p->slice_start_syscalls=0; 
+  for(int i=0;i<4;i++){
+      p->ticks_total[i]=0;
+  }
 }
 
 // Create a user page table for a given process, with no user memory,
