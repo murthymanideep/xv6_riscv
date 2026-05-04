@@ -2,7 +2,7 @@
 
 ---
 
-## Implemented System Calls
+## 1)Implemented System Calls
 
 ### hello()
 Prints a fixed message from inside the kernel.  
@@ -45,6 +45,144 @@ Uses `wait_lock` and child process locks for consistency.
 
 ---
 
+---
+
+## 2)Scheduler (SC-MLFQ)
+
+### Overview
+The default xv6 round-robin scheduler was replaced with a System-Call-Aware Multi-Level Feedback Queue (SC-MLFQ) scheduler.  
+The scheduler maintains four priority queues. Processes are scheduled from the highest priority queue first. CPU-bound processes are gradually demoted to lower queues while interactive processes remain at higher queues. Starvation is prevented using periodic global priority boosting.
+
+---
+
+### Scheduler Design
+Four queues are implemented.
+
+| Level | Time Quantum |
+|------|------------|
+| 0 | 2 ticks |
+| 1 | 4 ticks |
+| 2 | 8 ticks |
+| 3 | 16 ticks |
+
+Level 0 has the highest priority.
+
+- The scheduler always selects a RUNNABLE process from the highest non-empty queue.  
+- Within each queue, round-robin scheduling is used.
+
+---
+
+### Process Accounting
+Each process maintains the following fields:
+
+- `level` – current queue level  
+- `ticks_used` – ticks consumed in current time slice  
+- `ticks_total[4]` – total ticks consumed at each level  
+- `times_scheduled` – number of times scheduled  
+- `slice_start_syscalls` – syscall counter value at slice start  
+
+---
+
+### System-Call-Aware Rule
+At the end of each time slice:
+
+- ΔS = system calls during slice  
+- ΔT = ticks consumed during slice  
+
+Rule:
+- If ΔS ≥ ΔT → process is interactive → do not demote  
+- If ΔS < ΔT → process is CPU-bound → demote  
+
+A process is demoted by one level if it consumes its entire time slice and does not satisfy the interactive condition.  
+Level 3 is the lowest queue and cannot be demoted further.
+
+---
+
+### Global Priority Boost
+To prevent starvation, a global boost occurs every `128 timer ticks`.
+
+During the boost:
+- All RUNNABLE processes move to Level 0  
+- `ticks_used` is reset  
+
+---
+
+### Kernel Changes
+The following components were modified:
+
+- **proc.h**
+  - Added scheduling fields to `struct proc`
+
+- **proc.c**
+  - Reimplemented `scheduler()` with:
+    - multi-queue scheduling  
+    - round-robin within each queue  
+    - syscall-aware demotion  
+    - global priority boost  
+
+- **trap.c**
+  - Timer interrupt updated to:
+    - increment tick usage  
+    - enforce time quantum  
+    - trigger yield  
+
+---
+
+### New System Calls
+
+#### getlevel()
+Returns the current MLFQ level of the calling process.  
+Return value: `0–3`
+
+#### getmlfqinfo()
+Returns scheduling statistics of a process.  
+Return value:
+- `0` → success  
+- `-1` → invalid PID  
+
+---
+
+### Experimental Evaluation
+
+#### CPU-bound processes
+- Perform long computations with minimal system calls  
+- Gradually move from Level 0 → Level 3  
+- Remain in lowest queue  
+
+#### Syscall-heavy processes
+- Perform frequent system calls  
+- Satisfy ΔS ≥ ΔT  
+- Stay in higher priority queues  
+
+#### Mixed workloads
+- CPU-bound processes move down  
+- Interactive processes stay higher  
+- Scheduler prioritizes interactive tasks  
+
+---
+
+### Starvation Prevention
+- Global boost ensures all processes eventually regain high priority  
+- Prevents indefinite waiting  
+
+---
+
+### Conclusion
+The scheduler correctly implements SC-MLFQ behavior:
+
+- CPU-bound processes move to lower queues  
+- Interactive processes remain in higher queues  
+- Mixed workloads are handled correctly  
+- Starvation is prevented  
+
+
+
+
+
+
+
+
+---
 ## Note
 This repository is based on the original xv6 (RISC-V) codebase from MIT PDOS.
 
