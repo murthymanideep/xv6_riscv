@@ -561,6 +561,20 @@ void scheduler(void){
   }
 }
 
+// Priority boost function
+void priority_boost(void){
+  struct proc* p;
+  for(p=proc;p<&proc[NPROC];p++){
+    acquire(&p->lock);
+    if(p->state==RUNNABLE){
+      p->level=0;
+      p->ticks_used=0;
+      p->slice_start_syscalls= p->systemcall_count;
+    }
+    release(&p->lock);
+  }
+}
+
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this

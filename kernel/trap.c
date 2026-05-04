@@ -14,6 +14,7 @@ extern char trampoline[], uservec[];
 extern struct proc proc[];
 extern int time_quantum[];
 uint global_ticks=0;
+extern void priority_boost(void);
 
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
@@ -117,6 +118,16 @@ usertrap(void)
           }
           release(&temp->lock);
         }
+      }
+    }
+
+    // Priority boost
+    if(cpuid()==0){
+      global_ticks++;
+      if(global_ticks>=128){
+        global_ticks=0;
+        priority_boost();
+        should_yield=1;
       }
     }
 
@@ -224,6 +235,16 @@ kerneltrap()
           }
           release(&temp->lock);
         }
+      }
+    }
+
+    // Priority boost
+    if(cpuid()==0){
+      global_ticks++;
+      if(global_ticks>=128){
+        global_ticks=0;
+        priority_boost();
+        should_yield=1;
       }
     }
     
