@@ -147,3 +147,19 @@ void* kalloc_user(uint64 va,struct proc* p){
   release(&framelock);
   return (void*)pa;
 }
+
+// Clear frame table entry for given physical address
+void kfree_user(uint64 pa){
+  acquire(&framelock);
+  for(int i=0;i<NUM_FRAMES;i++){
+    if(frametable[i].in_use && frametable[i].pa==pa){
+      frametable[i].in_use=0;
+      if(frametable[i].p){
+        frametable[i].p->resident_pages--;
+      }
+      break;
+    }
+  }
+  release(&framelock);
+  kfree((void*)pa);
+}

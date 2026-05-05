@@ -459,17 +459,32 @@ vmfault(pagetable_t pagetable, uint64 va, int read)
     return 0;
   va = PGROUNDDOWN(va);
   if(ismapped(pagetable, va)) {
+    p->page_faults++;
     return 0;
   }
-  mem = (uint64) kalloc();
-  if(mem == 0)
+
+  // Get the page table entry
+  pte_t *pte=walk(pagetable,va,0);
+  uint64 pa=(uint64)kalloc_user(va,p);
+  if(pa==0){
     return 0;
+  }
+  // Using page table entry check the page is present in swap space
+  // Swap_in is not implemented yet
+  if(pte && (*pte&PTE_S)){
+    swap_in(p,va,pa);
+    p->page_faults++;
+    return pa;
+  }
+
+
   memset((void *) mem, 0, PGSIZE);
   if (mappages(p->pagetable, va, PGSIZE, mem, PTE_W|PTE_U|PTE_R) != 0) {
-    kfree((void *)mem);
+    kfree_user(pa);
     return 0;
   }
-  return mem;
+  p->page_faults++;
+  return pa;
 }
 
 int
