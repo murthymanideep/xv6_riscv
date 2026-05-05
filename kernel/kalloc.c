@@ -25,6 +25,8 @@ struct frame{
 struct frame frametable[NUM_FRAMES];
 // Lock to acess frame table
 struct spinlock framelock;
+// Clock hand
+int clock_hand=0;
 
 void freerange(void *pa_start, void *pa_end);
 
@@ -97,6 +99,75 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+
+// Clock algorithm to find the victim page to evict
+// Run the clock algorithm on the lowest priority processes
+/* 
+ If no process with a lower priority than the current process is found, 
+ then page replacement is performed by reclaiming pages from the current process only
+*/
+int get_victim(){
+  int num_frames_scanned=0;
+  int low_pri=-1;
+
+  // Find the low priority(high level) process in the frame table
+  for(int i=0;i<NUM_FRAMES;i++){
+    struct frame* f=&frametable[i];
+    if(f->in_use && f->p){
+      if(f->p->level>low_pri){
+        low_pri=f->p->level;
+      }
+    }
+  }
+
+
+  while(num_frames_scanned<2*NUM_FRAMES){
+    int idx=clock_hand;
+    clock_hand=(clock_hand+1)%NUM_FRAMES;
+    struct frame* f=&frametable[idx];
+
+    if(f->in_use && f->p && f->p->pagetable){
+      // Skip system processes
+      if(f->p->pid==1 || f->p->pid==2){
+        num_frames_scanned++;
+        continue;
+      }
+
+      // Check on for lowest priority process
+      if(f->p->level!=low_pri){
+        num_frames_scanned++;
+        continue;
+      }
+
+      pte_t* pte=walk(f->p->pagetable,f->va,0);
+      if(!pte || !(*pte&PTE_V)){
+        num_frames_scanned++;
+        continue;
+      }
+      if(PTE2PA(*pte)!=f->pa){
+        num_frames_scanned++;
+        continue;
+      }
+
+      // Check acessed bit
+      if(*pte & PTE_A){
+        f->ref=1;
+        *pte&=~PTE_A;
+        sfence_vma();
+      }
+      // Second chance logic software ref bit
+      if(f->ref==1){
+        f->ref=0;
+      }
+      else{
+        return idx;
+      }
+    }
+    num_frames_scanned++;
+  }
+  panic("get_victim: no victim found");
 }
 
 // Allocates memory for the user process
