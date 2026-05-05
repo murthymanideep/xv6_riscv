@@ -27,6 +27,16 @@ struct frame frametable[NUM_FRAMES];
 struct spinlock framelock;
 // Clock hand
 int clock_hand=0;
+// Swap slot
+struct swapslot{
+  int in_use;
+  struct proc* p;
+};
+// Swap table
+struct swapslot swaptable[MAX_SWAP_PAGES];
+// Swap space
+char swapspace[MAX_SWAP_PAGES][PGSIZE];
+struct spinlock swaplock;
 
 void freerange(void *pa_start, void *pa_end);
 
@@ -47,6 +57,7 @@ kinit()
 {
   initlock(&kmem.lock, "kmem");
   initlock(&framelock, "frametable");
+  initlock(&swaplock, "swaptable");
   freerange(end, (void*)PHYSTOP);
 }
 
