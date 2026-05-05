@@ -8,6 +8,23 @@
 #include "spinlock.h"
 #include "riscv.h"
 #include "defs.h"
+#include "proc.h"
+
+#define NUM_FRAMES 64
+#define MAX_SWAP_PAGES 32000
+
+// frame table entry
+struct frame{
+  int in_use;
+  struct proc* p;
+  uint64 va; // virtual address
+  uint64 pa; // physical address
+  int ref;
+};
+// Global frame table to track physical pages
+struct frame frametable[NUM_FRAMES];
+// Lock to acess frame table
+struct spinlock framelock;
 
 void freerange(void *pa_start, void *pa_end);
 
@@ -27,6 +44,7 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&framelock, "frametable");
   freerange(end, (void*)PHYSTOP);
 }
 
