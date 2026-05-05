@@ -99,6 +99,12 @@ struct proc {
   int times_scheduled;         // Times scheduled
   int slice_start_syscalls;    // Syscall count at slice start
 
+  int page_faults;             // Total number of page faults handled for this process
+  int pages_evicted;           // Number of pages evicted from this process's address space
+  int pages_swapped_in;        // Number of pages brought back from swap into memory
+  int pages_swapped_out;       // Number of pages written to swap space
+  int resident_pages;          // Current number of pages of this process present in physical memory
+
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
 
