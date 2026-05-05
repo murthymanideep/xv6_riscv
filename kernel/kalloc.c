@@ -98,3 +98,52 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+// Allocates memory for the user process
+// Implemented because kalloc fails if the memory is full
+// Instead we find a victim page and evict it from memory
+void* kalloc_user(uint64 va,struct proc* p){
+  // Find a empty slot in the frame table
+  int slot=-1;
+  uint64 pa=0;
+  for(int i=0;i<NUM_FRAMES;i++){
+    if(!frametable[i].in_use){
+      slot=i;
+      break;
+    }
+  }
+
+  // If we find a slot
+  // Get the physical address of the page from the free list
+  if(slot!=-1) {
+    void *mem=kalloc(); //gets pa from free list 
+    if(mem!=0){
+      pa=(uint64)mem;
+    } 
+    else{
+      slot=-1; 
+    }
+  }
+
+  // Find the victim page
+  // Swap out the vicim page
+  // get_victim and swap_out are not implemented yet
+  if(slot==-1){
+    slot=get_victim();
+    struct frame *f=&frametable[slot];
+    // We have process in frametable so pass the frame table slot
+    swap_out(f);
+    pa=f->pa;
+  }
+
+  // Update the frame table slot
+  frametable[slot].pa=pa;
+  frametable[slot].va=PGROUNDDOWN(va);
+  frametable[slot].p=p;
+  frametable[slot].in_use=1;
+  frametable[slot].ref=1;
+
+  p->resident_pages++; // Increase resident pages
+  release(&framelock);
+  return (void*)pa;
+}
