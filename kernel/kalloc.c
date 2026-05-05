@@ -113,6 +113,40 @@ kalloc(void)
 }
 
 
+// Swap out the victim page
+void swap_out(struct frame* f){
+  int s_idx=-1; // swap table index
+
+  // Find a swap slot
+  acquire(&swaplock);
+  for(int i=0;i<MAX_SWAP_PAGES;i++){
+    if(!swaptable[i].in_use){
+      swaptable[i].in_use=1;
+      swaptable[i].p=f->p;
+      s_idx=i;
+    }
+  }
+  release(&swaplock);
+  if(s_idx<0){
+    panic("Swap space is full");
+  }
+
+  pte_t *pte=walk(f->p->pagetable,f->va,0);
+  int flags=PTE_FLAGS(*pte);
+  flags=(flags&PTE_V)&PTE_S;
+  *pte=((uint64)s_idx<<10)|flags;
+
+  // Flush TLB
+  sfence_vma();
+  // Copy data into the swap space
+  memmove(swapspace[s_idx],(char*)f->pa,PGSIZE);
+
+  f->p->resident_pages--;
+  f->p->pages_evicted++;
+  f->p->pages_swapped_out++;
+}
+
+
 // Clock algorithm to find the victim page to evict
 // Run the clock algorithm on the lowest priority processes
 /* 
