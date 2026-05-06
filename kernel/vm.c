@@ -452,7 +452,6 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 uint64
 vmfault(pagetable_t pagetable, uint64 va, int read)
 {
-  uint64 mem;
   struct proc *p = myproc();
 
   if (va >= p->sz)
@@ -478,8 +477,8 @@ vmfault(pagetable_t pagetable, uint64 va, int read)
   }
 
 
-  memset((void *) mem, 0, PGSIZE);
-  if (mappages(p->pagetable, va, PGSIZE, mem, PTE_W|PTE_U|PTE_R) != 0) {
+  memset((void *) pa, 0, PGSIZE);
+  if (mappages(p->pagetable, va, PGSIZE, pa, PTE_W|PTE_U|PTE_R) != 0) {
     kfree_user(pa);
     return 0;
   }
