@@ -911,3 +911,38 @@ kgetmlfqinfo(int pid, struct mlfqinfo *info)
   }
   return -1;
 }
+
+
+int kgetvmstats(int pid,uint64 infoptr){
+  if(pid<0 || infoptr<0){
+    return -1;
+  }
+  struct proc *p;
+  struct vmstats stats;
+  int found=0;
+
+  for(p=proc;p<&proc[NPROC];p++){
+    acquire(&p->lock);
+    if(p->state!=UNUSED && p->pid==pid){
+      stats.page_faults=p->page_faults;
+      stats.pages_evicted=p->pages_evicted;
+      stats.pages_swapped_in=p->pages_swapped_in;
+      stats.pages_swapped_out=p->pages_swapped_out;
+      stats.resident_pages=p->resident_pages;
+      found=1;
+      release(&p->lock);
+      break;
+    }
+    release(&p->lock);
+  }
+
+  if(!found){
+    return -1;
+  }
+
+  struct proc *my_p=myproc();
+  if(copyout(my_p->pagetable,infoptr,(char *)&stats,sizeof(stats))<0){
+    return -1; 
+  }
+  return 0;
+}

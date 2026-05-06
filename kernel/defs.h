@@ -9,6 +9,7 @@ struct sleeplock;
 struct stat;
 struct superblock;
 struct mlfqinfo;
+struct vmstats;
 
 // bio.c
 void            binit(void);
@@ -60,6 +61,11 @@ void            ireclaim(int);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+void*           kalloc_user(uint64 va, struct proc *p);
+void            kfree_user(uint64 pa);
+void            swap_in(struct proc *p, uint64 va, uint64 pa);
+void            free_swap_slot(int idx);
+void            free_proc_swap(struct proc *p);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -110,6 +116,7 @@ int             kgetsyscount(void);
 int             kgetchildsyscount(int);
 int             kgetlevel(void);
 int             kgetmlfqinfo(int,struct mlfqinfo *);
+int             kgetvmstats(int,uint64);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

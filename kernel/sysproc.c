@@ -170,3 +170,15 @@ sys_getmlfqinfo(void)
   }
   return 0;
 }
+
+
+uint64
+sys_getvmstats(void)
+{
+  int pid;
+  uint64 infoptr;
+  argint(0,&pid);
+  argaddr(1,&infoptr);
+
+  return kgetvmstats(pid,infoptr);
+}

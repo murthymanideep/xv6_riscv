@@ -7,6 +7,13 @@ struct mlfqinfo{
     int times_scheduled;
     int total_syscalls;
 };
+struct vmstats{
+    int page_faults;
+  int pages_evicted;
+  int pages_swapped_in;
+  int pages_swapped_out;
+  int resident_pages;
+};
 
 // system calls
 int fork(void);
@@ -38,6 +45,7 @@ int getsyscount(void);
 int getchildsyscount(int);
 int getlevel(void);
 int getmlfqinfo(int, struct mlfqinfo*);
+int getvmstats(int,struct vmstats*);
 
 // ulib.c
 int stat(const char*, struct stat*);
