@@ -139,6 +139,11 @@ found:
   for(int i=0;i<4;i++){
       p->ticks_total[i]=0;
   }
+  p->page_faults=0;
+  p->pages_evicted=0;
+  p->pages_swapped_in=0;
+  p->pages_swapped_out=0;
+  p->resident_pages=0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -192,6 +197,13 @@ freeproc(struct proc *p)
   for(int i=0;i<4;i++){
       p->ticks_total[i]=0;
   }
+  // To clear the pages in the swap space
+  free_proc_swap(p);
+  p->page_faults=0;
+  p->pages_evicted=0;
+  p->pages_swapped_in=0;
+  p->pages_swapped_out=0;
+  p->resident_pages=0;
 }
 
 // Create a user page table for a given process, with no user memory,
