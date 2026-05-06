@@ -147,6 +147,31 @@ void swap_out(struct frame* f){
 }
 
 
+// Bring the page from swap space to the memory
+void swap_in(struct proc* p,uint64 va,uint64 new_pa){
+  // Page table entry
+  pte_t *pte=walk(p->pagetable,va,0);
+  if(pte==0){
+    panic("swap_in_page: error");
+  }
+
+  int s_idx=(*pte>>10);
+  if(s_idx<0 || s_idx>=MAX_SWAP_PAGES){
+    panic("swap_in_page: invalid index");
+  }
+
+  memmove((char*)new_pa,swapspace[s_idx],PGSIZE);
+  free_swap_slot(s_idx);
+
+  // Update the flags
+  int flags=PTE_FLAGS(*pte);
+  flags=(flags & ~PTE_S) | PTE_V;
+  *pte=PA2PTE(new_pa) | flags;
+
+  p->pages_swapped_in++;
+  sfence_vma();
+}
+
 // Clock algorithm to find the victim page to evict
 // Run the clock algorithm on the lowest priority processes
 /* 
@@ -278,4 +303,31 @@ void kfree_user(uint64 pa){
   }
   release(&framelock);
   kfree((void*)pa);
+}
+
+
+// Free swap slot clear acutual data in the swap space at the given index
+void free_swap_slot(int idx){
+  if(idx<0 || idx>=MAX_SWAP_PAGES){
+    return;
+  }
+  acquire(&swaplock);
+  swaptable[idx].in_use=0;
+  swaptable[idx].p=0;
+
+  memset(swapspace[idx],0,PGSIZE);
+  release(&swaplock);
+}
+
+// Free swap pages of a process when process exits
+void free_proc_swap(struct proc *p){
+  acquire(&swaplock);
+  for(int i=0;i<MAX_SWAP_PAGES;i++){
+    if(swaptable[i].in_use && swaptable[i].p==p){
+      swaptable[i].in_use=0;
+      swaptable[i].p=0;
+      memset(swapspace[i],0,PGSIZE);
+    }
+  }
+  release(&swaplock);
 }
