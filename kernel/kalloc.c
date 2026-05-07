@@ -244,6 +244,7 @@ int get_victim(){
 // Implemented because kalloc fails if the memory is full
 // Instead we find a victim page and evict it from memory
 void* kalloc_user(uint64 va,struct proc* p){
+  acquire(&framelock);
   // Find a empty slot in the frame table
   int slot=-1;
   uint64 pa=0;
