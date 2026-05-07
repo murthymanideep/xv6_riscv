@@ -124,6 +124,7 @@ void swap_out(struct frame* f){
       swaptable[i].in_use=1;
       swaptable[i].p=f->p;
       s_idx=i;
+      break;
     }
   }
   release(&swaplock);
@@ -132,8 +133,12 @@ void swap_out(struct frame* f){
   }
 
   pte_t *pte=walk(f->p->pagetable,f->va,0);
+  if(pte==0 || (*pte & PTE_V)==0){
+    f->in_use=0;
+    return;
+  }
   int flags=PTE_FLAGS(*pte);
-  flags=(flags&PTE_V)&PTE_S;
+  flags=(flags&~PTE_V)|PTE_S;
   *pte=((uint64)s_idx<<10)|flags;
 
   // Flush TLB
