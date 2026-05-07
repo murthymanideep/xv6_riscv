@@ -193,7 +193,7 @@ uvmcreate()
 // Remove npages of mappings starting from va. va must be
 // page-aligned. It's OK if the mappings don't exist.
 // Optionally free the physical memory.
-void
+/*void
 uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
   uint64 a;
@@ -213,7 +213,44 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     }
     *pte = 0;
   }
+}*/
+void
+uvmunmap(pagetable_t pagetable,uint64 va,uint64 npages,int do_free)
+{
+  uint64 a;
+  pte_t *pte;
+  if((va%PGSIZE)!=0)
+    panic("uvmunmap: not aligned");
+
+  for(a=va;a<va+npages*PGSIZE;a+=PGSIZE){
+    if((pte=walk(pagetable,a,0))==0){
+      continue; 
+    }
+    // skip if page is neither valid nor swapped
+    if((*pte & PTE_V)==0 && (*pte & PTE_S)==0){  
+      continue;
+    }
+
+    if(do_free){
+      // in swap space
+      if(*pte & PTE_S){
+        int s_idx=(*pte>>10);
+        *pte=0;
+        free_swap_slot(s_idx);
+      } // in physical memory
+      else if(*pte & PTE_V){
+        uint64 pa=PTE2PA(*pte);
+        *pte=0;
+        sfence_vma();
+        kfree_user(pa);
+      }
+    } // only unmap without freeing backing storage
+    else{
+      *pte=0;
+    }
+  }
 }
+
 
 // Allocate PTEs and physical memory to grow a process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
