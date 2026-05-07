@@ -8,6 +8,10 @@
 #include "proc.h"
 #include "fs.h"
 
+
+#define MAX_SWAP_PAGES 1024 
+extern char swapspace[MAX_SWAP_PAGES][PGSIZE];
+
 /*
  * the kernel's page table.
  */
@@ -293,7 +297,7 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // physical memory.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
-int
+/*int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
@@ -320,6 +324,64 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
  err:
   uvmunmap(new, 0, i / PGSIZE, 1);
+  return -1;
+}*/
+
+// even if some of the pages of parent processe are present in swap space
+// creating the child processes pages in memory
+int
+uvmcopy(pagetable_t old,pagetable_t new,uint64 sz,struct proc *np)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+  char *mem;
+  uint64 pte_val;
+
+  for(i=0;i<sz;i+=PGSIZE){
+    if((pte=walk(old,i,0))==0)
+      continue;   // page table entry hasn't been allocated
+      
+    pte_val=*pte;
+    if((pte_val & PTE_V)==0 && (pte_val & PTE_S)==0)
+      continue;   // physical page hasn't been allocated
+
+    // allocate page for the new process (np)
+    if((mem=kalloc_user(i,np))==0)
+      goto err;  
+
+    pte_val=*pte; 
+    flags=PTE_FLAGS(pte_val);
+    
+    // copy the data from parent pages to child pages
+    if(pte_val & PTE_V){
+      pa=PTE2PA(pte_val);
+      memmove(mem,(char*)pa,PGSIZE);
+      
+    } 
+    else if(pte_val & PTE_S){
+      int s_idx=(pte_val>>10);
+      if(s_idx<0 || s_idx>=MAX_SWAP_PAGES){
+        panic("uvmcopy: invalid swap index");
+      }
+      memmove(mem,swapspace[s_idx],PGSIZE);
+      flags=(flags & ~PTE_S) | PTE_V;
+      
+    } 
+    else{
+      kfree_user((uint64)mem);
+      continue;
+    }
+
+    if(mappages(new,i,PGSIZE,(uint64)mem,flags)!=0){
+      kfree_user((uint64)mem);
+      goto err;
+    }
+  }
+  return 0;
+
+ err:
+  uvmunmap(new,0,i/PGSIZE,1);
   return -1;
 }
 
