@@ -176,7 +176,151 @@ The scheduler correctly implements SC-MLFQ behavior:
 - Starvation is prevented  
 
 
+---
+---
+---
 
+## 3)Virtual Memory and Page Replacement
+
+### Implemented Features
+
+#### Lazy Page Allocation
+- `vmfault()` allocates memory only on access  
+- No allocation during `sbrk()` or `exec()`  
+- Reduces initial memory usage  
+
+---
+
+#### Frame Table Management
+A global frame table tracks all user pages.
+
+Each frame stores:
+- process (`p`)  
+- virtual address (`va`)  
+- physical address (`pa`)  
+
+Custom allocators:
+
+##### kalloc_user()
+- Allocates a free frame if available  
+- Otherwise evicts a victim frame and reuses it  
+
+##### kfree_user()
+- Frees a frame  
+- Updates frame table metadata  
+
+The implementation enforces a fixed number of physical frames.
+
+---
+
+#### Clock Page Replacement
+`get_victim()` performs a circular scan using `clock_hand`.
+
+For each frame:
+- Retrieve page table entry using `walk()`  
+- Skip invalid mappings  
+- If `PTE_A == 1`:
+  - clear access bit  
+  - continue scanning  
+- Otherwise:
+  - select frame as victim  
+
+Priority-aware eviction:
+- Prefer pages belonging to lower-priority processes  
+- Fall back to scanning all frames if necessary  
+
+---
+
+#### Disk Swapping
+
+##### swap_out(frame)
+- Finds a free swap slot  
+- Copies page contents into swap space  
+- Updates page table entry:
+  - set `PTE_S`  
+  - clear `PTE_V`  
+  - store swap index  
+- Executes `sfence_vma()`  
+- Updates statistics:
+  - `resident_pages--`
+  - `pages_evicted++`
+  - `pages_swapped_out++`
+
+##### swap_in(p, va)
+- Reads swap index from page table entry  
+- Allocates a new frame  
+- Restores page contents from swap space  
+- Updates page table entry:
+  - set `PTE_V`
+  - clear `PTE_S`
+- Frees swap slot  
+- Updates statistics:
+  - `pages_swapped_in++`
+
+---
+
+#### Page Fault Handling
+`vmfault()`:
+- Returns on invalid addresses  
+- Returns if page is already mapped  
+- Calls `swap_in()` if page is swapped out  
+- Otherwise allocates a new page lazily  
+- Increments `page_faults`
+
+---
+
+#### Fork Handling (`uvmcopy`)
+For each page:
+- If `PTE_V`:
+  - allocate new frame  
+  - copy memory  
+  - map page in child  
+
+- Else if `PTE_S`:
+  - allocate new swap slot  
+  - copy swap data  
+  - mark child page as swapped  
+
+This ensures correct duplication under memory pressure.
+
+---
+
+### Assumptions
+- Swap space is assumed to be sufficient  
+- Kernel pages are not swappable  
+- Only user pages participate in eviction  
+- `PTE_A` is maintained correctly by hardware  
+
+---
+
+### Experimental Results
+
+#### Resident Page Accuracy
+Correct resident page counts observed during:
+- `userinit`
+- `exec`
+- normal execution
+
+---
+
+#### High Memory Pressure
+- Eviction triggered correctly under memory exhaustion  
+- Clock algorithm selected valid victims  
+- Fallback scanning prevented starvation  
+
+---
+
+#### Swap Reliability
+- Swapped pages restored correctly  
+- `PTE_S` faults handled properly  
+- No data corruption observed  
+
+---
+
+#### Fork Under Pressure
+- `fork()` works correctly with swapped pages  
+- Parent and child memory states remain consistent  
+- No corruption observed under swapping pressure  
 
 
 
