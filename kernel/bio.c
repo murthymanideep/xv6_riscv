@@ -55,7 +55,7 @@ binit(void)
 // Look through buffer cache for block on device dev.
 // If not found, allocate a buffer.
 // In either case, return locked buffer.
-static struct buf*
+struct buf*
 bget(uint dev, uint blockno)
 {
   struct buf *b;
@@ -66,6 +66,9 @@ bget(uint dev, uint blockno)
   for(b = bcache.head.next; b != &bcache.head; b = b->next){
     if(b->dev == dev && b->blockno == blockno){
       b->refcnt++;
+      struct proc* p=myproc();
+      b->p=p;   // Associate buffer with the process initiating this request
+      b->qnext=0;  // Initialize scheduling queue link for reused buffer
       release(&bcache.lock);
       acquiresleep(&b->lock);
       return b;
@@ -80,6 +83,9 @@ bget(uint dev, uint blockno)
       b->blockno = blockno;
       b->valid = 0;
       b->refcnt = 1;
+      struct proc* p=myproc();
+      b->p=p;   // Associate buffer with the process initiating this request
+      b->qnext=0;  // Initialize scheduling queue link for reused buffer
       release(&bcache.lock);
       acquiresleep(&b->lock);
       return b;
