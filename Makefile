@@ -151,6 +151,7 @@ UPROGS=\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
+	dd if=/dev/zero bs=1024 count=40000 >> fs.img
 
 -include kernel/*.d user/*.d
 
