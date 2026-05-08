@@ -105,6 +105,13 @@ struct proc {
   int pages_swapped_out;       // Number of pages written to swap space
   int resident_pages;          // Current number of pages of this process present in physical memory
 
+  uint disk_reads;             // Number of disk read requests initiated by this process
+  uint disk_writes;            // Number of disk write requests initiated by this process
+  uint total_disk_ios;         // Total disk I/O requests associated with this process
+  uint total_disk_latency;     // Accumulated latency of all disk I/O requests
+  uint avg_disk_latency;       // Average latency across all disk I/O requests
+
+
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
 
