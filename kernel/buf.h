@@ -8,5 +8,8 @@ struct buf {
   struct buf *prev; // LRU cache list
   struct buf *next;
   uchar data[BSIZE];
+
+  struct proc *p;   // Process that initiated this disk I/O request
+  struct buf *qnext;// Next buffer in the disk request queue
 };
 
