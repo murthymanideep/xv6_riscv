@@ -9,7 +9,7 @@
 #include "buf.h"
 #include "raid.h"
 
-int raid_mode=0; // 0: striping, 1: mirroring, 5: parity
+int raid_mode=0; // 0: striping, 1: mirroring, 5: parity, 10: mirroring,striping
 int failed_disk=-1; // -1 means all disks are healty
 
 int get_raid_mode(void){
@@ -42,6 +42,52 @@ void raid_write_page(int swap_slot,uint64 pa,int mode,int disk_failed){
                 brelse(b);
             }
         }
+        else if(mode==1){
+            uint pair=logical_block%2;
+            uint offset=logical_block/2;
+            uint diskA=pair*2;
+            uint diskB=pair*2+1;
+            uint disk_blockA=SWAP_START_BLOCK+diskA*(SIM_DISK_SIZE)+offset;
+            uint disk_blockB=SWAP_START_BLOCK+diskB*(SIM_DISK_SIZE)+offset;
+            
+            // do not write in the failed disk and we can recover data of failed disk
+            // by its copy disk
+            if(diskA!=failed_disk){
+                struct buf* bA=bget(1,disk_blockA);
+                memmove(bA->data,(void*)(pa+i*BSIZE),BSIZE);
+                bwrite(bA);
+                brelse(bA);
+            }
+            if(diskB!=failed_disk){
+                struct buf* bB=bget(1,disk_blockB);
+                memmove(bB->data,(void*)(pa+i*BSIZE),BSIZE);
+                bwrite(bB);
+                brelse(bB);
+            }
+        }
+        else if(mode==10){
+            // mirrioring
+            uint pairs=logical_block%(NUM_DISKS/2);
+            // striping
+            uint offset=logical_block/(NUM_DISKS/2);
+            uint diskA=2*pairs;
+            uint diskB=2*pairs+1;
+            uint disk_blockA=SWAP_START_BLOCK+diskA*(SIM_DISK_SIZE)+offset;
+            uint disk_blockB=SWAP_START_BLOCK+diskB*(SIM_DISK_SIZE)+offset;
+            // write to the disks which are not failed
+            if(diskA!=failed_disk){
+                struct buf* bA=bget(1,disk_blockA);
+                memmove(bA->data,(void*)(pa+i*BSIZE),BSIZE);
+                bwrite(bA);
+                brelse(bA);
+            }
+            if(diskB!=failed_disk){
+                struct buf* bB=begt(1,disk_blockB);
+                memmove(bB->data,(void*)(pa+i*BSIZE),BSIZE);
+                bwrite(bB);
+                brelse(bB);
+            }
+        }
     }
 }
 
@@ -65,6 +111,35 @@ void raid_read_page(int swap_slot,uint64 pa,int mode,int disk_failed){
             else{
                 memset((void*)(pa + i * BSIZE), 0, BSIZE);
             }
+        }
+        else if(mode==1){
+            uint pair=logical_block%2;
+            uint offset=logical_block/2;
+            uint diskA=pair*2;
+            uint diskB=pair*2+1;
+            uint disk_blockA=SWAP_START_BLOCK+diskA*(SIM_DISK_SIZE)+offset;
+            uint disk_blockB=SWAP_START_BLOCK+diskB*(SIM_DISK_SIZE)+offset;
+
+            // read from the disk which is not failed
+            uint read_disk=(disk_failed==diskA)?disk_blockB:disk_blockA;
+            struct buf *b=bread(1,read_disk);
+            memmove((void*)(pa+i*BSIZE),b->data,BSIZE);
+            brelse(b);
+        }
+        else if(mode==10){
+            // mirrioring
+            uint pairs=logical_block%(NUM_DISKS/2);
+            // striping
+            uint offset=logical_block/(NUM_DISKS/2);
+            uint diskA=2*pairs;
+            uint diskB=2*pairs+1;
+            uint disk_blockA=SWAP_START_BLOCK+diskA*(SIM_DISK_SIZE)+offset;
+            uint disk_blockB=SWAP_START_BLOCK+diskB*(SIM_DISK_SIZE)+offset;
+            // read from the disk which is not failed
+            uint read_disk=(disk_failed==diskA)?disk_blockB:disk_blockA;
+            struct buf *b=bread(1,read_disk);
+            memmove((void*)(pa+i*BSIZE),b->data,BSIZE);
+            brelse(b);
         }
     }
 }
