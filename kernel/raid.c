@@ -98,7 +98,23 @@ void raid_write_page(int swap_slot,uint64 pa,int mode,int disk_failed){
             uint data_disk_block=SWAP_START_BLOCK+(data_disk*SIM_DISK_SIZE)+offset;
             uint parity_disk_block=SWAP_START_BLOCK+(parity_disk*SIM_DISK_SIZE)+offset;
             if(disk_failed==data_disk){
+                struct buf *bparity=bread(1,parity_disk_block);
+                char *new_data=(char *)(pa+i*BSIZE);
+                memmove(bparity->data,new_data,BSIZE);
+                for(int d=0;d<NUM_DISKS;d++){
+                    if(d==disk_failed || d==parity_disk){
+                        continue;
+                    }
 
+                    uint disk_block_other=SWAP_START_BLOCK+(d*SIM_DISK_SIZE)+offset;
+                    struct buf *bother=bread(1,disk_block_other);
+                    for(int j=0;j<BSIZE;j++){
+                        bparity->data[j]^=bother->data[j];
+                    }
+                    brelse(bother);
+                }
+                bwrite(bparity);
+                brelse(bparity);
             }
             else if(disk_failed==parity_disk){
                 struct buf* bdata=bread(1,data_disk_block);
@@ -183,7 +199,7 @@ void raid_read_page(int swap_slot,uint64 pa,int mode,int disk_failed){
             brelse(b);
         }
         else if(mode==5){
-            
+
         }
     }
 }
