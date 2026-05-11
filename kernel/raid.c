@@ -88,6 +88,47 @@ void raid_write_page(int swap_slot,uint64 pa,int mode,int disk_failed){
                 brelse(bB);
             }
         }
+        else if(mode==5){
+            uint offset=logical_block/(NUM_DISKS-1);
+            uint data_disk=logical_block%(NUM_DISKS-1);
+            uint parity_disk=offset%NUM_DISKS;
+            if(data_disk>=parity_disk){
+                data_disk++;
+            }
+            uint data_disk_block=SWAP_START_BLOCK+(data_disk*SIM_DISK_SIZE)+offset;
+            uint parity_disk_block=SWAP_START_BLOCK+(parity_disk*SIM_DISK_SIZE)+offset;
+            if(disk_failed==data_disk){
+
+            }
+            else if(disk_failed==parity_disk){
+                struct buf* bdata=bread(1,data_disk_block);
+                memmove(bdata->data,(void*)(pa+i*BSIZE),BSIZE);
+                bwrite(bdata);
+                brelse(bdata);
+            }
+            else{
+                struct buf *bdata,*bparity;
+                // lock buffers in fixed block order to avoid deadlock
+                if(data_disk_block<parity_disk_block){
+                    bdata=bread(1,data_disk_block);
+                    bparity=bread(1,parity_disk_block);
+                } 
+                else{
+                    bparity=bread(1,parity_disk_block);
+                    bdata=bread(1,data_disk_block);
+                }
+                // using subtractive parity method to update the parity disk
+                char *new_data=(void*)(pa+i*BSIZE);
+                for(int j=0;j<BSIZE;j++){
+                    bparity->data[j]^=(bdata->data[j]^new_data[j]);
+                }
+                memmove(bdata->data,new_data,BSIZE);
+                bwrite(bdata);
+                bwrite(bparity);
+                brelse(bdata);
+                brelse(bparity);
+            }
+        }
     }
 }
 
@@ -140,6 +181,9 @@ void raid_read_page(int swap_slot,uint64 pa,int mode,int disk_failed){
             struct buf *b=bread(1,read_disk);
             memmove((void*)(pa+i*BSIZE),b->data,BSIZE);
             brelse(b);
+        }
+        else if(mode==5){
+            
         }
     }
 }
