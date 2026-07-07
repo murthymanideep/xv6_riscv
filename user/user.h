@@ -1,4 +1,5 @@
 #define SBRK_ERROR ((char *)-1)
+#include "kernel/types.h"
 
 struct stat;
 struct mlfqinfo{
@@ -7,12 +8,16 @@ struct mlfqinfo{
     int times_scheduled;
     int total_syscalls;
 };
+
 struct vmstats{
-    int page_faults;
+  int page_faults;
   int pages_evicted;
   int pages_swapped_in;
   int pages_swapped_out;
   int resident_pages;
+  int disk_reads;
+  int disk_writes;
+  int avg_disk_latency;
 };
 
 // system calls
@@ -46,6 +51,9 @@ int getchildsyscount(int);
 int getlevel(void);
 int getmlfqinfo(int, struct mlfqinfo*);
 int getvmstats(int,struct vmstats*);
+int setdisksched(int);
+int setfaileddisk(int);
+int setraidmode(int);
 
 // ulib.c
 int stat(const char*, struct stat*);
