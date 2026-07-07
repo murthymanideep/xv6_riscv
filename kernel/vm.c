@@ -7,10 +7,14 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "fs.h"
+#include "raid.h"
 
-
-#define MAX_SWAP_PAGES 1024 
-extern char swapspace[MAX_SWAP_PAGES][PGSIZE];
+struct swapslot{
+  int in_use;
+  struct proc *p;
+};
+extern struct swapslot swaptable[MAX_SWAP_PAGES];
+extern struct spinlock swaplock;
 
 /*
  * the kernel's page table.
@@ -192,28 +196,7 @@ uvmcreate()
 
 // Remove npages of mappings starting from va. va must be
 // page-aligned. It's OK if the mappings don't exist.
-// Optionally free the physical memory.
-/*void
-uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
-{
-  uint64 a;
-  pte_t *pte;
-
-  if((va % PGSIZE) != 0)
-    panic("uvmunmap: not aligned");
-
-  for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
-    if((pte = walk(pagetable, a, 0)) == 0) // leaf page table entry allocated?
-      continue;   
-    if((*pte & PTE_V) == 0)  // has physical page been allocated?
-      continue;
-    if(do_free){
-      uint64 pa = PTE2PA(*pte);
-      kfree((void*)pa);
-    }
-    *pte = 0;
-  }
-}*/
+// Optionally free the physical memory or swap slots.
 void
 uvmunmap(pagetable_t pagetable,uint64 va,uint64 npages,int do_free)
 {
@@ -226,31 +209,29 @@ uvmunmap(pagetable_t pagetable,uint64 va,uint64 npages,int do_free)
     if((pte=walk(pagetable,a,0))==0){
       continue; 
     }
-    // skip if page is neither valid nor swapped
+    
     if((*pte & PTE_V)==0 && (*pte & PTE_S)==0){  
       continue;
     }
 
     if(do_free){
-      // in swap space
       if(*pte & PTE_S){
         int s_idx=(*pte>>10);
         *pte=0;
         free_swap_slot(s_idx);
-      } // in physical memory
+      } 
       else if(*pte & PTE_V){
         uint64 pa=PTE2PA(*pte);
         *pte=0;
         sfence_vma();
         kfree_user(pa);
       }
-    } // only unmap without freeing backing storage
+    } 
     else{
       *pte=0;
     }
   }
 }
-
 
 // Allocate PTEs and physical memory to grow a process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
@@ -259,20 +240,21 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
 {
   char *mem;
   uint64 a;
+  struct proc* p=myproc();
 
   if(newsz < oldsz)
     return oldsz;
 
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += PGSIZE){
-    mem = kalloc();
+    mem = kalloc_user(a,p);
     if(mem == 0){
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
-      kfree(mem);
+      kfree_user((uint64)mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
@@ -330,30 +312,66 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 
 // Given a parent process's page table, copy
 // its memory into a child's page table.
-// Copies both the page table and the
-// physical memory.
+// Copies both the page table and the physical memory.
+// Handles both resident (PTE_V) and swapped-out (PTE_S) pages.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
 /*int
-uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, struct proc *np)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
   char *mem;
+  uint64 pte_val;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      continue;   // page table entry hasn't been allocated
-    if((*pte & PTE_V) == 0)
-      continue;   // physical page hasn't been allocated
-    pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
+      continue;   
+      
+    pte_val = *pte;
+    // Skip if it's neither valid nor swapped out
+    if((pte_val & PTE_V) == 0 && (pte_val & PTE_S) == 0)
+      continue;   
+
+    // Allocate frame for the child. 
+    // Note: This might trigger an eviction, changing the state of the parent's PTE!
+    if((mem = (char*)kalloc_user(i, np)) == 0)
       goto err;
-    memmove(mem, (char*)pa, PGSIZE);
+
+    // Re-read PTE because kalloc_user might have swapped this very page out
+    pte_val = *pte; 
+    flags = PTE_FLAGS(pte_val);
+
+    if(pte_val & PTE_V){
+      // Parent page is in RAM. Copy it normally.
+      pa = PTE2PA(pte_val);
+      memmove(mem, (char*)pa, PGSIZE);
+    } 
+    else if(pte_val & PTE_S){
+      // Parent page is on disk. 
+      int s_idx = (pte_val >> 10);
+      
+      if(s_idx < 0){ // Adjust MAX_SWAP_PAGES check if you have a macro for it
+        panic("uvmcopy: invalid swap index");
+      }
+      
+      // Read directly from disk into the child's new physical memory.
+      // (Change 'raid_read_page' to whatever your exact read function is named if different)
+      raid_read_page(s_idx, (uint64)mem,get_raid_mode()); 
+      
+      // The child's new page is in RAM, so clear the swap bit and set valid bit
+      flags = (flags & ~PTE_S) | PTE_V;
+    } 
+    else{
+      // Fallback safety catch
+      kfree_user((uint64)mem);
+      continue;
+    }
+
+    // Map the new physical page into the child's page table
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+      kfree_user((uint64)mem);
       goto err;
     }
   }
@@ -364,10 +382,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return -1;
 }*/
 
-// even if some of the pages of parent processe are present in swap space
-// creating the child processes pages in memory
+
 int
-uvmcopy(pagetable_t old,pagetable_t new,uint64 sz,struct proc *np)
+uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, struct proc *np)
 {
   pte_t *pte;
   uint64 pa, i;
@@ -375,50 +392,79 @@ uvmcopy(pagetable_t old,pagetable_t new,uint64 sz,struct proc *np)
   char *mem;
   uint64 pte_val;
 
-  for(i=0;i<sz;i+=PGSIZE){
-    if((pte=walk(old,i,0))==0)
-      continue;   // page table entry hasn't been allocated
+  for(i = 0; i < sz; i += PGSIZE){
+    if((pte = walk(old, i, 0)) == 0)
+      continue;   
       
-    pte_val=*pte;
-    if((pte_val & PTE_V)==0 && (pte_val & PTE_S)==0)
-      continue;   // physical page hasn't been allocated
+    pte_val = *pte;
+    if((pte_val & PTE_V) == 0 && (pte_val & PTE_S) == 0)
+      continue;   
 
-    // allocate page for the new process (np)
-    if((mem=kalloc_user(i,np))==0)
-      goto err;  
+    if(pte_val & PTE_S){
+      int parent_s_idx = (pte_val >> 10);
+      int child_s_idx = -1;
 
-    pte_val=*pte; 
-    flags=PTE_FLAGS(pte_val);
-    
-    // copy the data from parent pages to child pages
-    if(pte_val & PTE_V){
-      pa=PTE2PA(pte_val);
-      memmove(mem,(char*)pa,PGSIZE);
-      
-    } 
-    else if(pte_val & PTE_S){
-      int s_idx=(pte_val>>10);
-      if(s_idx<0 || s_idx>=MAX_SWAP_PAGES){
-        panic("uvmcopy: invalid swap index");
+      // Allocate a completely new swap slot for the child
+      acquire(&swaplock);
+      for(int j = 0; j < MAX_SWAP_PAGES; j++){
+        if(!swaptable[j].in_use){
+          child_s_idx = j;
+          swaptable[child_s_idx].in_use = 1;
+          swaptable[child_s_idx].p = np;
+          break;
+        }
       }
-      memmove(mem,swapspace[s_idx],PGSIZE);
-      flags=(flags & ~PTE_S) | PTE_V;
-      
-    } 
-    else{
-      kfree_user((uint64)mem);
-      continue;
-    }
+      release(&swaplock);
 
-    if(mappages(new,i,PGSIZE,(uint64)mem,flags)!=0){
-      kfree_user((uint64)mem);
-      goto err;
+      if(child_s_idx == -1) goto err; // Swap space full
+
+      // Allocate a temporary bounce buffer using pure kalloc()
+      void *bounce_buffer = kalloc();
+      if(bounce_buffer == 0){
+        free_swap_slot(child_s_idx);
+        goto err;
+      }
+
+      raid_read_page(parent_s_idx, (uint64)bounce_buffer, get_raid_mode());
+      raid_write_page(child_s_idx, (uint64)bounce_buffer, get_raid_mode());
+
+      kfree(bounce_buffer);
+      pte_t *child_pte = walk(new, i, 1);
+      if(child_pte == 0){
+        free_swap_slot(child_s_idx);
+        goto err;
+      }
+
+      flags = PTE_FLAGS(pte_val);
+      *child_pte = ((uint64)child_s_idx << 10) | (flags & ~PTE_V) | PTE_S;
+      
+      np->pages_swapped_out++;
+    } 
+    else if(pte_val & PTE_V) {
+      if((mem = (char*)kalloc_user(i, np)) == 0)
+        goto err;
+      pte_val = *pte; 
+      flags = PTE_FLAGS(pte_val);
+
+      if(pte_val & PTE_V){
+        pa = PTE2PA(pte_val);
+        memmove(mem, (char*)pa, PGSIZE);
+      } 
+      else if(pte_val & PTE_S){
+        int s_idx = (pte_val >> 10);
+        raid_read_page(s_idx, (uint64)mem, get_raid_mode());
+        flags = (flags & ~PTE_S) | PTE_V;
+      }
+      if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+        kfree_user((uint64)mem);
+        goto err;
+      }
     }
   }
   return 0;
 
  err:
-  uvmunmap(new,0,i/PGSIZE,1);
+  uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
 
@@ -548,40 +594,35 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 // that was lazily allocated in sys_sbrk().
 // returns 0 if va is invalid or already mapped, or if
 // out of physical memory, and physical address if successful.
-uint64
-vmfault(pagetable_t pagetable, uint64 va, int read)
-{
-  struct proc *p = myproc();
-
-  if (va >= p->sz)
+uint64 vmfault(pagetable_t pagetable,uint64 va,int read){
+  struct proc *p=myproc();
+  if(va>=p->sz){
     return 0;
-  va = PGROUNDDOWN(va);
-  if(ismapped(pagetable, va)) {
+  }
+  va=PGROUNDDOWN(va);
+  if(ismapped(pagetable,va)){
     p->page_faults++;
     return 0;
   }
-
-  // Get the page table entry
   pte_t *pte=walk(pagetable,va,0);
   uint64 pa=(uint64)kalloc_user(va,p);
   if(pa==0){
     return 0;
   }
-  // Using page table entry check the page is present in swap space
-  // Swap_in is not implemented yet
+
   if(pte && (*pte&PTE_S)){
     swap_in(p,va,pa);
-    p->page_faults++;
+    p->page_faults++; // swap fault
     return pa;
   }
 
-
-  memset((void *) pa, 0, PGSIZE);
-  if (mappages(p->pagetable, va, PGSIZE, pa, PTE_W|PTE_U|PTE_R) != 0) {
+  memset((void*)pa,0,PGSIZE);
+  if(mappages(p->pagetable,va,PGSIZE,pa,PTE_W|PTE_U|PTE_R)!=0){
     kfree_user(pa);
     return 0;
   }
-  p->page_faults++;
+
+  p->page_faults++; // lazy allocation fault
   return pa;
 }
 
