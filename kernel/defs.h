@@ -18,7 +18,7 @@ void            brelse(struct buf*);
 void            bwrite(struct buf*);
 void            bpin(struct buf*);
 void            bunpin(struct buf*);
-struct buf*     bget(uint,uint);
+struct buf*     bget(uint, uint);
 
 // console.c
 void            consoleinit(void);
@@ -62,6 +62,7 @@ void            ireclaim(int);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+void*           alloc_user_page(uint64 va, struct proc *p);
 void*           kalloc_user(uint64 va, struct proc *p);
 void            kfree_user(uint64 pa);
 void            swap_in(struct proc *p, uint64 va, uint64 pa);
@@ -187,6 +188,7 @@ int             copyinstr(pagetable_t, char *, uint64, uint64);
 int             ismapped(pagetable_t, uint64);
 uint64          vmfault(pagetable_t, uint64, int);
 
+
 // plic.c
 void            plicinit(void);
 void            plicinithart(void);
@@ -197,6 +199,14 @@ void            plic_complete(int);
 void            virtio_disk_init(void);
 void            virtio_disk_rw(struct buf *, int);
 void            virtio_disk_intr(void);
+void            get_global_disk_stats(int *,int *,int *);
+
+// raid.c
+void            raid_read_page(int swap_slot, uint64 pa, int mode);
+void            raid_write_page(int swap_slot, uint64 pa, int mode);
+int             set_raid_mode(int mode);
+int             get_raid_mode(void);
+void            set_failed_disk(int);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

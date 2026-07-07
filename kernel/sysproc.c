@@ -7,6 +7,9 @@
 #include "proc.h"
 #include "vm.h"
 
+extern int disk_sched_policy;
+extern int failed_disk;
+
 uint64
 sys_exit(void)
 {
@@ -181,4 +184,34 @@ sys_getvmstats(void)
   argaddr(1,&infoptr);
 
   return kgetvmstats(pid,infoptr);
+}
+
+uint64 sys_setdisksched(void){
+    int policy;
+    argint(0,&policy);
+    if(policy!=0 && policy!=1){
+      return -1;
+    }
+    disk_sched_policy=policy;
+    return 0;
+}
+
+uint64 sys_setfaileddisk(void){
+  int disk;
+  argint(0,&disk);
+  if(disk<0 || disk>3){
+    return -1;
+  }
+  set_failed_disk(disk);
+  return 0;
+}
+
+uint64 sys_setraidmode(void){
+  int mode;
+  argint(0,&mode);
+  if(mode==0 || mode==1 || mode==5){
+    set_raid_mode(mode);
+    return 0;
+  }
+  return -1;
 }
