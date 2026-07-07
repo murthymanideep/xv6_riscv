@@ -16,6 +16,14 @@ int get_raid_mode(void){
     return raid_mode;
 }
 
+int set_raid_mode(int mode){
+    if(mode!=0 && mode!=1 && mode!=5 && mode!=10){
+        return -1;
+    }
+    raid_mode=mode;
+    return 0;
+}
+
 int get_failed_disk(void){
     return failed_disk;
 }
@@ -29,7 +37,7 @@ void raid_write_page(int swap_slot,uint64 pa,int mode,int disk_failed){
         // Striping
         if(mode==0){
             uint disk=logical_block%NUM_DISKS;
-            if(disk!=failed_disk){
+            if(disk!=disk_failed){
                 uint offset=logical_block/NUM_DISKS;
                 // disk block number
                 uint disk_block=SWAP_START_BLOCK+(disk*SIM_DISK_SIZE)+offset;
@@ -52,13 +60,13 @@ void raid_write_page(int swap_slot,uint64 pa,int mode,int disk_failed){
             
             // do not write in the failed disk and we can recover data of failed disk
             // by its copy disk
-            if(diskA!=failed_disk){
+            if(diskA!=disk_failed){
                 struct buf* bA=bget(1,disk_blockA);
                 memmove(bA->data,(void*)(pa+i*BSIZE),BSIZE);
                 bwrite(bA);
                 brelse(bA);
             }
-            if(diskB!=failed_disk){
+            if(diskB!=disk_failed){
                 struct buf* bB=bget(1,disk_blockB);
                 memmove(bB->data,(void*)(pa+i*BSIZE),BSIZE);
                 bwrite(bB);
@@ -75,14 +83,14 @@ void raid_write_page(int swap_slot,uint64 pa,int mode,int disk_failed){
             uint disk_blockA=SWAP_START_BLOCK+diskA*(SIM_DISK_SIZE)+offset;
             uint disk_blockB=SWAP_START_BLOCK+diskB*(SIM_DISK_SIZE)+offset;
             // write to the disks which are not failed
-            if(diskA!=failed_disk){
+            if(diskA!=disk_failed){
                 struct buf* bA=bget(1,disk_blockA);
                 memmove(bA->data,(void*)(pa+i*BSIZE),BSIZE);
                 bwrite(bA);
                 brelse(bA);
             }
-            if(diskB!=failed_disk){
-                struct buf* bB=begt(1,disk_blockB);
+            if(diskB!=disk_failed){
+                struct buf* bB=bget(1,disk_blockB);
                 memmove(bB->data,(void*)(pa+i*BSIZE),BSIZE);
                 bwrite(bB);
                 brelse(bB);
@@ -150,12 +158,12 @@ void raid_write_page(int swap_slot,uint64 pa,int mode,int disk_failed){
 
 // Read from disk blocks and bring data into memory
 void raid_read_page(int swap_slot,uint64 pa,int mode,int disk_failed){
-    for(int i=0;i,4;i++){
+    for(int i=0;i<4;i++){
         uint logical_block=(swap_slot*4)+i;
         // Striping
         if(mode==0){
             uint disk=logical_block%NUM_DISKS;
-            if(disk!=failed_disk){
+            if(disk!=disk_failed){
                 uint offset=logical_block/NUM_DISKS;
                 // disk block number
                 uint disk_block=SWAP_START_BLOCK+disk*(SIM_DISK_SIZE)+offset;
@@ -199,7 +207,36 @@ void raid_read_page(int swap_slot,uint64 pa,int mode,int disk_failed){
             brelse(b);
         }
         else if(mode==5){
+            uint offset=logical_block/(NUM_DISKS-1);
+            uint data_disk=logical_block%(NUM_DISKS-1);
+            uint parity_disk=offset%NUM_DISKS;
+            if(data_disk>=parity_disk){
+                data_disk++;
+            }
 
+            uint data_disk_block=SWAP_START_BLOCK+(data_disk*SIM_DISK_SIZE)+offset;
+            // if data disk is healthy directly read from it
+            if(data_disk!=disk_failed){
+                struct buf *b=bread(1,data_disk_block);
+                memmove((void*)(pa+i*BSIZE),b->data,BSIZE);
+                brelse(b);
+            }
+            // if data disk failed recover data using parity and remaining disks
+            else{
+                char *data=(char*)(pa+i*BSIZE);
+                memset(data,0,BSIZE);
+                for(int d=0;d<NUM_DISKS;d++){
+                    if(d==disk_failed){
+                        continue;
+                    }
+                    uint disk_block=SWAP_START_BLOCK+(d*SIM_DISK_SIZE)+offset;
+                    struct buf *b=bread(1,disk_block);
+                    for(int j=0;j<BSIZE;j++){
+                        data[j]^=b->data[j];
+                    }
+                    brelse(b);
+                }
+            }
         }
     }
 }
